@@ -1,11 +1,9 @@
-import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js";
+import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js";
 import { getAuth } from 'https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js';
 import { 
-  getFirestore, 
+  getFirestore,
   initializeFirestore,
-  persistentLocalCache,
-  persistentSingleTabManager,
-  CACHE_SIZE_UNLIMITED
+  memoryLocalCache
 } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 import { getStorage } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-storage.js";
 
@@ -19,30 +17,33 @@ const firebaseConfig = {
   measurementId: "G-QL82J92CP7"
 };
 
-// Check if app already initialized
-const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+// Initialize app - check if already exists
+let app;
+if (getApps().length === 0) {
+  app = initializeApp(firebaseConfig);
+  console.log('🔥 Firebase app initialized');
+} else {
+  app = getApp();
+  console.log('🔥 Using existing Firebase app');
+}
 
-// Initialize Firestore with settings to prevent Target ID conflicts
+// Initialize Firestore with memory cache to prevent Target ID conflicts
+// This must be done BEFORE any getFirestore() calls
 let db;
 try {
-  // Try to get existing Firestore instance first
-  db = getFirestore(app);
-  console.log('🔥 Using existing Firestore instance');
+  // Try to initialize with memory cache (prevents IndexedDB Target ID conflicts)
+  db = initializeFirestore(app, {
+    localCache: memoryLocalCache()
+  });
+  console.log('🔥 Firestore initialized with memory cache');
 } catch (e) {
-  console.log('🔥 Initializing Firestore with custom settings...');
-  // If that fails, initialize with custom settings
-  try {
-    db = initializeFirestore(app, {
-      localCache: persistentLocalCache({
-        tabManager: persistentSingleTabManager({
-          forceOwnership: true  // This prevents Target ID conflicts across tabs
-        }),
-        cacheSizeBytes: CACHE_SIZE_UNLIMITED
-      })
-    });
-  } catch (initError) {
-    // Fallback: try basic getFirestore again
-    console.warn('⚠️ Custom Firestore init failed, using default:', initError.message);
+  // If initializeFirestore fails (already initialized), fall back to getFirestore
+  if (e.code === 'failed-precondition' || e.message?.includes('already been called')) {
+    db = getFirestore(app);
+    console.log('🔥 Using existing Firestore instance');
+  } else {
+    // For any other error, try getFirestore as last resort
+    console.warn('⚠️ Firestore init error:', e.message);
     db = getFirestore(app);
   }
 }
@@ -51,4 +52,4 @@ export const auth = getAuth(app);
 export { db };
 export const storage = getStorage(app);
 
-console.log('🔥 Firebase initialized successfully');
+console.log('🔥 Firebase setup complete');
