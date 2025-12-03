@@ -36,8 +36,6 @@ class ModalManager {
           align-items: center;
           justify-content: center;
           padding: 16px;
-          overflow: hidden;
-          box-sizing: border-box;
         }
         
         .modal-backdrop.active {
@@ -49,7 +47,7 @@ class ModalManager {
           background: #ffffff;
           border-radius: 16px;
           box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-          max-width: min(420px, calc(100vw - 32px));
+          max-width: 420px;
           width: 100%;
           max-height: 90vh;
           overflow: hidden;
@@ -143,16 +141,10 @@ class ModalManager {
           gap: 12px;
           padding: 16px 24px 20px;
           border-top: 1px solid #e5e7eb;
-          flex-wrap: wrap;
-          max-height: 50vh;
-          overflow-y: auto;
-          overflow-x: hidden;
         }
         
         .modal-btn {
           flex: 1;
-          min-width: 100px;
-          max-width: 100%;
           padding: 12px 20px;
           border: none;
           border-radius: 10px;
@@ -161,29 +153,6 @@ class ModalManager {
           cursor: pointer;
           transition: all 0.2s;
           font-family: inherit;
-          white-space: normal;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          word-wrap: break-word;
-          overflow-wrap: break-word;
-        }
-        
-        /* When there are many buttons (like route choices), stack them */
-        .modal-footer.many-choices {
-          flex-direction: column;
-          gap: 8px;
-        }
-        
-        .modal-footer.many-choices .modal-btn {
-          flex: none;
-          width: 100%;
-          min-width: unset;
-          text-align: left;
-          padding: 14px 16px;
-          white-space: normal;
-          word-wrap: break-word;
-          overflow-wrap: break-word;
-          line-height: 1.3;
         }
         
         .modal-btn-secondary {
@@ -231,31 +200,12 @@ class ModalManager {
           
           .modal-dialog {
             max-width: none;
-            width: 100%;
             border-radius: 20px 20px 0 0;
             max-height: 85vh;
           }
           
           .modal-footer {
             flex-direction: column;
-            max-height: 40vh;
-            overflow-x: hidden;
-          }
-          
-          .modal-footer .modal-btn {
-            width: 100%;
-            flex: none;
-            min-width: unset;
-          }
-          
-          .modal-footer.many-choices {
-            padding: 12px 16px 16px;
-          }
-          
-          .modal-footer.many-choices .modal-btn {
-            padding: 12px 14px;
-            font-size: 14px;
-            white-space: normal;
           }
         }
         
@@ -328,14 +278,10 @@ class ModalManager {
                   value="${this.escapeHtml(defaultValue)}">`;
       }
 
-      html += '</div>';
-      
-      // Add many-choices class if there are more than 2 buttons
-      const buttons = config.buttons || this.getDefaultButtons(config.type, config.input);
-      const manyChoices = buttons.length > 2 ? ' many-choices' : '';
-      html += `<div class="modal-footer${manyChoices}">`;
+      html += '</div><div class="modal-footer">';
 
       // Buttons
+      const buttons = config.buttons || this.getDefaultButtons(config.type, config.input);
       buttons.forEach(btn => {
         const variant = btn.variant || 'secondary';
         html += `<button class="modal-btn modal-btn-${variant}" data-action="${btn.action}">

@@ -5,20 +5,13 @@ import { TrackingController } from './core/tracking.js';
 import { TimerController } from './core/timer.js';
 import { NavigationController } from './ui/navigation.js';
 import { CompassController } from './ui/compass.js';
-import { offlineIndicator } from './ui/offlineIndicator.js';
-import { loadingStates } from './ui/loadingStates.js';
-import { gamificationUI } from './ui/gamificationUI.js';
-import { accessibilityRating } from './features/accessibilityRating.js';
-import { trailSearch } from './features/trailSearch.js';
-import { AccessibilityFormV2Quick } from './features/accessibilityFormV2Quick.js';
-import { trailGuideGeneratorV2 } from './features/trailGuideGeneratorV2.js';
+import { AccessibilityForm } from './features/accessibility.js';
 import { MediaController } from './features/media.js';
 import { ExportController } from './features/export.js';
 import { FirebaseController } from './features/firebase.js';
 import authController from './features/auth.js';  // Use singleton, not class
 import { toast } from './utils/toast.js';
 import { modal } from './utils/modal.js';
-import { showError, getErrorMessage } from './utils/errorMessages.js';
 
 class AccessNatureApp {
   constructor() {
@@ -44,8 +37,7 @@ async initialize() {
     this.controllers.compass = new CompassController();
 
     // Initialize feature controllers
-    this.controllers.accessibility = new AccessibilityFormV2Quick();
-    this.controllers.trailGuide = trailGuideGeneratorV2;  // Trail guide generator
+    this.controllers.accessibility = new AccessibilityForm();
     this.controllers.media = new MediaController(this.controllers.state);
     this.controllers.export = new ExportController(this.controllers.state);
     this.controllers.firebase = new FirebaseController();
@@ -63,9 +55,6 @@ async initialize() {
     // Set up error handling
     this.setupErrorHandling();
 
-    // Initialize offline indicator (shows when user goes offline)
-    offlineIndicator.initialize();
-
     // NEW: Check for unsaved route BEFORE loading initial state
     await this.handleUnsavedRoute();
 
@@ -77,8 +66,7 @@ async initialize() {
 
   } catch (error) {
     console.error('❌ App initialization failed:', error);
-    showError(error);
-    toast.error('Please refresh the page to try again.', { duration: 0 });
+    toast.error('Failed to initialize application. Please refresh the page.', { duration: 0 });
   }
 }
 
@@ -654,16 +642,4 @@ window.viewMyTrailGuide = (guideId) => app?.getController('auth')?.viewTrailGuid
 window.toggleGuideVisibility = (guideId, makePublic) => app?.getController('auth')?.toggleTrailGuideVisibility(guideId, makePublic);
 window.deleteTrailGuide = (guideId) => app?.getController('auth')?.deleteTrailGuide(guideId);
 
-// Make utilities available for debugging
-window.offlineIndicator = offlineIndicator;
-window.loadingStates = loadingStates;
-window.gamificationUI = gamificationUI;
-window.accessibilityRating = accessibilityRating;
-window.trailSearch = trailSearch;
-window.showError = showError;
-window.getErrorMessage = getErrorMessage;
-
-// Setup badge notification popups
-gamificationUI.setupBadgeNotifications();
-
-export { AccessNatureApp, offlineIndicator, loadingStates, gamificationUI, accessibilityRating, trailSearch, showError, getErrorMessage };
+export { AccessNatureApp };

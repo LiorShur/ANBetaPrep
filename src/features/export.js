@@ -2,7 +2,6 @@
 import { toast } from '../utils/toast.js';
 import { modal } from '../utils/modal.js';
 import { userService } from '../services/userService.js';
-import { trailGuideGeneratorV2 } from './trailGuideGeneratorV2.js';
 
 export class ExportController {
   constructor(appState) {
@@ -703,22 +702,21 @@ async exportRouteSummary() {
   if (!routeDataToExport || !routeInfo) return;
 
   try {
-    // Use the new trail guide generator V2
-    const htmlContent = trailGuideGeneratorV2.generateHTML(routeDataToExport, routeInfo, accessibilityData);
-    const filename = `${routeInfo.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_trail_guide.html`;
+    const htmlContent = this.generateRouteSummaryHTML(routeDataToExport, routeInfo, accessibilityData);
+    const filename = `${routeInfo.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_summary.html`;
     
     this.downloadFile(htmlContent, filename, 'text/html');
-    toast.success('Trail guide created successfully!');
+    toast.success('Route summary webpage created successfully!');
     
     // Ask if they want to preview it
-    const preview = await modal.confirm('Trail guide created! Would you like to preview it in a new tab?', '👁️ Preview Guide');
+    const preview = await modal.confirm('Route summary created! Would you like to preview it in a new tab?', '👁️ Preview Summary');
     if (preview) {
       this.previewRouteSummary(htmlContent);
     }
     
   } catch (error) {
-    console.error('Trail guide export failed:', error);
-    toast.error('Trail guide export failed: ' + error.message);
+    console.error('Route summary export failed:', error);
+    toast.error('Route summary export failed: ' + error.message);
   }
 }
 

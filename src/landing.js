@@ -2,13 +2,6 @@
 import { auth, db } from '../firebase-setup.js';
 import { toast } from './utils/toast.js';
 import { modal } from './utils/modal.js';
-import { offlineIndicator } from './ui/offlineIndicator.js';
-import { loadingStates } from './ui/loadingStates.js';
-import { gamificationUI } from './ui/gamificationUI.js';
-import { accessibilityRating } from './features/accessibilityRating.js';
-import { trailSearch } from './features/trailSearch.js';
-import { showError, getErrorMessage } from './utils/errorMessages.js';
-import { userService } from './services/userService.js';
 // import { initializeAccessReport } from './js/modules/access-report-main.js';
 
 class LandingPageController {
@@ -19,168 +12,31 @@ class LandingPageController {
     this.lastVisible = null;
     this.isLoading = false;
     this.allFeaturedTrails = [];      // Store ALL trails
-    this.filteredTrails = [];         // Store filtered trails
     this.displayedFeaturedCount = 0;  // How many currently shown
     this.featuredBatchSize = 6;       // Load 6 at a time
     this.publicGuidesCache = null;    // Cache for shared queries
   }
 
-  async initialize() {
-    console.log('🏠 initialize() method called');
-    try {
-      console.log('🏠 Initializing landing page...');
-      
-      // Initialize offline indicator
-      offlineIndicator.initialize();
-      
-      // Initialize search UI
-      console.log('🏠 About to call initializeTrailSearch()');
-      this.initializeTrailSearch();
-      console.log('🏠 initializeTrailSearch() completed');
-      
-      this.setupEventListeners();
-      await this.updateLandingAuthStatus();
-      await this.loadCommunityStats();
-      await this.loadFeaturedTrails();
-      this.updateUserStats();
-      
-      // Make this instance globally available for modal functions
-      window.landingAuth = this;
-      
-      console.log('✅ Landing page initialized');
-    } catch (error) {
-      console.error('❌ Landing page initialization failed:', error);
-      showError(error);
-    }
+async initialize() {
+  try {
+    console.log('🏠 Initializing landing page...');
+    
+    this.setupEventListeners();
+    await this.updateLandingAuthStatus();
+    await this.loadCommunityStats();
+    await this.loadFeaturedTrails();
+    this.updateUserStats();
+    
+    // Make this instance globally available for modal functions
+    window.landingAuth = this;
+    
+    console.log('✅ Landing page initialized');
+  } catch (error) {
+    console.error('❌ Landing page initialization failed:', error);
   }
+}
 
-  /**
-   * Initialize trail search UI
-   */
-  initializeTrailSearch() {
-    console.log('🔍 initializeTrailSearch() called');
-    const searchContainer = document.getElementById('trailSearchContainer');
-    console.log('🔍 searchContainer:', searchContainer);
-    if (!searchContainer) {
-      console.log('⚠️ Trail search container not found');
-      return;
-    }
-    
-    // Create search UI
-    const searchUI = trailSearch.createSearchUI({
-      showSort: true,
-      showFilters: true,
-      expandedByDefault: false,
-      placeholder: 'Search trails by name or location...'
-    });
-    
-    searchContainer.appendChild(searchUI);
-    
-    // Set up filter change callback
-    trailSearch.onFilterChange = (filters, sortBy) => {
-      console.log('🔍 Filters changed:', filters, 'Sort:', sortBy);
-      this.applyTrailFilters();
-    };
-    
-    console.log('🔍 Trail search UI initialized');
-  }
-
-  /**
-   * Apply trail filters and update display
-   */
-  applyTrailFilters() {
-    // Filter and sort trails
-    this.filteredTrails = trailSearch.filterAndSort(this.allFeaturedTrails);
-    
-    // Update results header
-    const headerContainer = document.getElementById('trailResultsHeader');
-    if (headerContainer) {
-      headerContainer.innerHTML = '';
-      const header = trailSearch.createResultsHeader(
-        this.filteredTrails.length,
-        this.allFeaturedTrails.length
-      );
-      headerContainer.appendChild(header);
-    }
-    
-    // Reset displayed count and show filtered results
-    this.displayedFeaturedCount = 0;
-    this.displayFilteredTrails();
-  }
-
-  /**
-   * Display filtered trails
-   */
-  displayFilteredTrails() {
-    const container = document.getElementById('featuredTrails');
-    if (!container) return;
-    
-    // Use filtered trails if we have them, otherwise use all
-    const trailsToUse = this.filteredTrails.length > 0 || trailSearch.getActiveFilterCount() > 0
-      ? this.filteredTrails 
-      : this.allFeaturedTrails;
-    
-    // No results
-    if (trailsToUse.length === 0) {
-      container.innerHTML = '';
-      container.appendChild(trailSearch.createNoResults());
-      this.updateLoadMoreButtonFiltered(0, 0);
-      return;
-    }
-    
-    // Calculate what to show
-    const startIndex = this.displayedFeaturedCount;
-    const endIndex = Math.min(
-      startIndex + this.featuredBatchSize,
-      trailsToUse.length
-    );
-    
-    const trailsToShow = trailsToUse.slice(startIndex, endIndex);
-    
-    // First batch: replace content
-    if (this.displayedFeaturedCount === 0) {
-      const featuredHTML = trailsToShow
-        .map(trail => this.createFeaturedTrailCard(trail))
-        .join('');
-      container.innerHTML = featuredHTML;
-    } else {
-      // Subsequent batches: append content
-      const featuredHTML = trailsToShow
-        .map(trail => this.createFeaturedTrailCard(trail))
-        .join('');
-      container.insertAdjacentHTML('beforeend', featuredHTML);
-    }
-    
-    this.displayedFeaturedCount = endIndex;
-    this.updateLoadMoreButtonFiltered(this.displayedFeaturedCount, trailsToUse.length);
-  }
-
-  /**
-   * Update load more button for filtered results
-   */
-  updateLoadMoreButtonFiltered(displayed, total) {
-    const button = document.getElementById('loadMoreBtn') || document.querySelector('.load-more-btn');
-    if (!button) return;
-    
-    const remaining = total - displayed;
-    
-    if (remaining > 0) {
-      button.style.display = 'block';
-      button.textContent = `Load More Trails (${remaining} more)`;
-      button.disabled = false;
-      button.style.opacity = '1';
-      button.style.cursor = 'pointer';
-    } else if (total > 0) {
-      button.textContent = `All ${total} trails shown ✓`;
-      button.disabled = true;
-      button.style.opacity = '0.5';
-      button.style.cursor = 'not-allowed';
-    } else {
-      button.style.display = 'none';
-    }
-  }
-
-  setupEventListeners() {
+ setupEventListeners() {
     // Quick search
     const quickSearchInput = document.getElementById('quickSearch');
     if (quickSearchInput) {
@@ -581,19 +437,6 @@ async loadFeaturedTrails() {
     
     console.log(`✅ Found ${this.allFeaturedTrails.length} total public trail guides`);
     
-    // Initialize filtered trails as all trails (no filters active yet)
-    this.filteredTrails = [...this.allFeaturedTrails];
-    
-    // Update results header
-    const headerContainer = document.getElementById('trailResultsHeader');
-    if (headerContainer) {
-      const header = trailSearch.createResultsHeader(
-        this.allFeaturedTrails.length,
-        this.allFeaturedTrails.length
-      );
-      headerContainer.appendChild(header);
-    }
-    
     // Display first batch
     this.displayedFeaturedCount = 0;
     this.displayFeaturedBatch();
@@ -969,39 +812,25 @@ Happy trail mapping! 🥾`);
   async loadMoreFeatured() {
   console.log('⭐ Loading more featured trails...');
   
-  // Determine which trails array to use
-  const trailsToUse = trailSearch.getActiveFilterCount() > 0 
-    ? this.filteredTrails 
-    : this.allFeaturedTrails;
-  
   // Check if all loaded
-  if (this.displayedFeaturedCount >= trailsToUse.length) {
+  if (this.displayedFeaturedCount >= this.allFeaturedTrails.length) {
     console.log('✅ All trails already displayed');
     return;
   }
   
   // Show loading state
-  const button = document.getElementById('loadMoreBtn') || document.querySelector('.load-more-btn');
+  const button = document.querySelector('.load-more-btn');
   if (button) {
     button.textContent = 'Loading...';
     button.disabled = true;
     
     // Small delay for UX
     setTimeout(() => {
-      // Use filtered display if filters are active
-      if (trailSearch.getActiveFilterCount() > 0) {
-        this.displayFilteredTrails();
-      } else {
-        this.displayFeaturedBatch();
-      }
+      this.displayFeaturedBatch();  // Load next batch
       button.disabled = false;
     }, 300);
   } else {
-    if (trailSearch.getActiveFilterCount() > 0) {
-      this.displayFilteredTrails();
-    } else {
-      this.displayFeaturedBatch();
-    }
+    this.displayFeaturedBatch();
   }
 }
 
@@ -1215,132 +1044,124 @@ downloadTrailGuide(htmlContent, routeName) {
   }
 }
 
-  // UPDATED: Check authentication status for landing page
-  async checkLandingAuth() {
-    try {
-      const { auth } = await import('../firebase-setup.js');
-      return {
-        isSignedIn: !!auth.currentUser,
-        user: auth.currentUser,
-        email: auth.currentUser?.email
-      };
-    } catch (error) {
-      console.error('Auth check failed:', error);
-      return { isSignedIn: false, user: null, email: null };
-    }
+// UPDATED: Check authentication status for landing page
+async checkLandingAuth() {
+  try {
+    const { auth } = await import('../firebase-setup.js');
+    return {
+      isSignedIn: !!auth.currentUser,
+      user: auth.currentUser,
+      email: auth.currentUser?.email
+    };
+  } catch (error) {
+    console.error('Auth check failed:', error);
+    return { isSignedIn: false, user: null, email: null };
   }
+}
 
-  // Update landing auth status
-  async updateLandingAuthStatus() {
+// ADD this method to LandingPageController
+async updateLandingAuthStatus() {
+  const authStatus = await this.checkLandingAuth();
+  
+  const userInfo = document.getElementById('userInfo');
+  const authPrompt = document.getElementById('authPrompt');
+  const userEmail = document.getElementById('userEmail');
+  
+  if (authStatus.isSignedIn) {
+    userInfo?.classList.remove('hidden');
+    authPrompt?.classList.add('hidden');
+    if (userEmail) userEmail.textContent = authStatus.email;
+  } else {
+    userInfo?.classList.add('hidden');
+    authPrompt?.classList.remove('hidden');
+  }
+}
+
+// Call this in your initialize() method
+async initialize() {
+  try {
+    console.log('🏠 Initializing landing page...');
+    
+    this.setupEventListeners();
+    await this.updateLandingAuthStatus(); // Add this line
+    await this.loadCommunityStats();
+    await this.loadFeaturedTrails();
+    this.updateUserStats();
+    
+    console.log('✅ Landing page initialized');
+  } catch (error) {
+    console.error('❌ Landing page initialization failed:', error);
+  }
+}
+
+async loadMyTrailGuides() {
+  try {
+    console.log('🌐 Loading trail guides from landing page...');
+    
+    // Check if user is signed in
     const authStatus = await this.checkLandingAuth();
+    if (!authStatus.isSignedIn) {
+      toast.error('Please sign in first to view your trail guides');
+      return;
+    }
+
+    // Import Firestore functions
+    const { collection, query, where, orderBy, getDocs } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
+    const { db, auth } = await import('../firebase-setup.js');
     
-    const userInfo = document.getElementById('userInfo');
-    const authPrompt = document.getElementById('authPrompt');
-    const userEmail = document.getElementById('userEmail');
+    // Query user's trail guides
+    const guidesQuery = query(
+      collection(db, 'trail_guides'),
+      where('userId', '==', auth.currentUser.uid),
+      orderBy('generatedAt', 'desc')
+    );
     
-    if (authStatus.isSignedIn) {
-      userInfo?.classList.remove('hidden');
-      authPrompt?.classList.add('hidden');
-      if (userEmail) userEmail.textContent = authStatus.email;
-      
-      // Initialize userService for gamification
-      if (!userService.isInitialized) {
-        try {
-          await userService.initializeUser(authStatus.user);
-          console.log('🏅 UserService initialized for gamification');
-        } catch (error) {
-          console.warn('⚠️ UserService initialization failed:', error);
-        }
-      }
-    } else {
-      userInfo?.classList.add('hidden');
-      authPrompt?.classList.remove('hidden');
-      userService.reset();
-    }
-  }
-
-  // Listen for auth state changes
-  async setupAuthListener() {
-    try {
-      const { onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js");
-      const { auth } = await import('../firebase-setup.js');
-      
-      onAuthStateChanged(auth, async (user) => {
-        await this.updateLandingAuthStatus();
+    const querySnapshot = await getDocs(guidesQuery);
+    const guides = [];
+    
+    querySnapshot.forEach(doc => {
+      guides.push({
+        id: doc.id,
+        ...doc.data()
       });
-    } catch (error) {
-      console.warn('⚠️ Failed to setup auth listener:', error);
-    }
-  }
-
-  async loadMyTrailGuides() {
-    try {
-      console.log('🌐 Loading trail guides from landing page...');
-      
-      // Check if user is signed in
-      const authStatus = await this.checkLandingAuth();
-      if (!authStatus.isSignedIn) {
-        toast.error('Please sign in first to view your trail guides');
-        return;
-      }
-
-      // Import Firestore functions
-      const { collection, query, where, orderBy, getDocs } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
-      const { db, auth } = await import('../firebase-setup.js');
-      
-      // Query user's trail guides
-      const guidesQuery = query(
-        collection(db, 'trail_guides'),
-        where('userId', '==', auth.currentUser.uid),
-        orderBy('generatedAt', 'desc')
-      );
-      
-      const querySnapshot = await getDocs(guidesQuery);
-      const guides = [];
-      
-      querySnapshot.forEach(doc => {
-        guides.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
-      
-      console.log(`Found ${guides.length} trail guides`);
-      
-      if (guides.length === 0) {
-        toast.error('No trail guides found.\n\nTo create trail guides:\n• Record a route in the tracker\n• Save it to cloud\n• Trail guide will be auto-generated');
-        return;
-      }
-      
-      await this.displayLandingGuides(guides);
-      
-    } catch (error) {
-      console.error('Failed to load trail guides:', error);
-      toast.error('Failed to load trail guides: ' + error.message);
-    }
-  }
-
-  // Display landing guides
-  async displayLandingGuides(guides) {
-    const choices = guides.map((guide, index) => {
-      const date = new Date(guide.generatedAt).toLocaleDateString();
-      const visibility = guide.isPublic ? '🌍' : '🔒';
-      const distance = guide.metadata ? (guide.metadata.totalDistance || 0).toFixed(1) : '0';
-      
-      return {
-        label: `${visibility} ${guide.routeName} (${date}, ${distance} km)`,
-        value: index
-      };
     });
     
-    choices.push({ label: '❌ Cancel', value: 'cancel' });
+    console.log(`Found ${guides.length} trail guides`);
     
-    const choice = await modal.choice('Select a guide to view:', '🌐 Your Trail Guides', choices);
-    
-    if (choice !== null && choice !== 'cancel') {
-      await this.viewTrailGuide(guides[choice].id);
+    if (guides.length === 0) {
+      toast.error('No trail guides found.\n\nTo create trail guides:\n• Record a route in the tracker\n• Save it to cloud\n• Trail guide will be auto-generated');
+      return;
     }
+    
+    await this.displayLandingGuides(guides);
+    
+  } catch (error) {
+    console.error('Failed to load trail guides:', error);
+    toast.error('Failed to load trail guides: ' + error.message);
   }
+}
+
+// Add this method too
+async displayLandingGuides(guides) {
+  const choices = guides.map((guide, index) => {
+    const date = new Date(guide.generatedAt).toLocaleDateString();
+    const visibility = guide.isPublic ? '🌍' : '🔒';
+    const distance = guide.metadata ? (guide.metadata.totalDistance || 0).toFixed(1) : '0';
+    
+    return {
+      label: `${visibility} ${guide.routeName} (${date}, ${distance} km)`,
+      value: index
+    };
+  });
+  
+  choices.push({ label: '❌ Cancel', value: 'cancel' });
+  
+  const choice = await modal.choice('Select a guide to view:', '🌐 Your Trail Guides', choices);
+  
+  if (choice !== null && choice !== 'cancel') {
+    await this.viewTrailGuide(guides[choice].id);
+  }
+}
 }
 
 
@@ -1434,23 +1255,14 @@ setupModalEventListeners() {
       const { onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js");
       const { auth } = await import('../firebase-setup.js');
       
-      onAuthStateChanged(auth, async (user) => {
+      onAuthStateChanged(auth, (user) => {
         this.currentUser = user;
         this.updateAuthStatus();
         
         if (user) {
           console.log('✅ User signed in:', user.email);
-          
-          // Initialize userService for gamification
-          try {
-            await userService.initializeUser(user);
-            console.log('🏅 UserService initialized for gamification');
-          } catch (error) {
-            console.warn('⚠️ UserService initialization failed:', error);
-          }
         } else {
           console.log('👋 User signed out');
-          userService.reset();
         }
       });
       
@@ -1761,30 +1573,14 @@ async function initAccessReport() {
 
 // Initialize landing page when DOM is ready
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('📄 DOM Content Loaded - starting landing page init');
   try {
     // Initialize landing page controller
     const landingController = new LandingPageController();
-    console.log('📄 LandingPageController created');
     await landingController.initialize();
-    console.log('📄 LandingPageController.initialize() completed');
     landingController.setupGlobalFunctions();
     
     // Make controller available globally
     window.LandingPageController = landingController;
-    
-    // Make utilities available for debugging
-    window.offlineIndicator = offlineIndicator;
-    window.loadingStates = loadingStates;
-    window.gamificationUI = gamificationUI;
-    window.accessibilityRating = accessibilityRating;
-    window.trailSearch = trailSearch;
-    window.userService = userService;
-    window.showError = showError;
-    window.getErrorMessage = getErrorMessage;
-    
-    // Setup badge notification popups
-    gamificationUI.setupBadgeNotifications();
     
     // Initialize access report if available
     await initAccessReport();

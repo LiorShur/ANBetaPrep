@@ -3,7 +3,6 @@ import { haversineDistance } from '../utils/calculations.js';
 import { toast } from '../utils/toast.js';
 import { modal } from '../utils/modal.js';
 import { userService } from '../services/userService.js';
-import { trailGuideGeneratorV2 } from '../features/trailGuideGeneratorV2.js';
 
 export class TrackingController {
   constructor(appState) {
@@ -457,8 +456,16 @@ async generateTrailGuide(routeId, routeData, routeInfo, accessibilityData, authC
   try {
     console.log('🌐 Generating trail guide HTML...');
     
-    // Use the new trail guide generator V2
-    const htmlContent = trailGuideGeneratorV2.generateHTML(routeData, routeInfo, accessibilityData);
+    // Get the export controller to generate HTML
+    const app = window.AccessNatureApp;
+    const exportController = app?.getController('export');
+    
+    if (!exportController || typeof exportController.generateRouteSummaryHTML !== 'function') {
+      console.warn('Export controller not available for HTML generation');
+      return;
+    }
+    
+    const htmlContent = exportController.generateRouteSummaryHTML(routeData, routeInfo, accessibilityData);
     const user = authController.getCurrentUser();
     
     console.log('🔍 Saving trail guide for userId:', user?.uid);

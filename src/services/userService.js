@@ -8,8 +8,7 @@
 
 import { 
   doc, 
-  getDoc,
-  getDocFromServer,
+  getDoc, 
   setDoc,
   updateDoc, 
   increment, 
@@ -64,60 +63,32 @@ class UserService {
     this.currentUser = firebaseUser;
     console.log('👤 UserService: Initializing for', firebaseUser.email);
 
-    const MAX_RETRIES = 3;
-    let lastError = null;
-
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        // Use getDocFromServer to avoid Target ID conflicts with cached queries
-        let userDoc;
-        try {
-          userDoc = await getDocFromServer(doc(db, 'users', firebaseUser.uid));
-        } catch (serverError) {
-          // Fallback to cached getDoc if server fetch fails
-          console.log('👤 UserService: Server fetch failed, trying cache...');
-          userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        }
-        
-        if (userDoc.exists()) {
-          this.userData = userDoc.data();
-          console.log('👤 UserService: Loaded existing user data');
-          // Ensure all new fields exist (migration)
-          await this.migrateUserData();
-        } else {
-          // New user - create document with all fields
-          console.log('👤 UserService: Creating new user document');
-          await this.createNewUser(firebaseUser);
-        }
-        
-        // Update last active and check streak
-        await this.updateLastActive();
-        
-        this.isInitialized = true;
-        this.isInitializing = false;
-        console.log('✅ UserService: Initialization complete');
-        return; // Success - exit the retry loop
-        
-      } catch (error) {
-        lastError = error;
-        
-        // Check if it's the Target ID error - retry with delay
-        if (error.message?.includes('Target ID') && attempt < MAX_RETRIES) {
-          console.log(`👤 UserService: Retry ${attempt}/${MAX_RETRIES} after Target ID conflict...`);
-          await new Promise(resolve => setTimeout(resolve, 500 * attempt)); // Exponential backoff
-          continue;
-        }
-        
-        // For other errors or final retry, throw
-        break;
+    try {
+      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+      
+      if (userDoc.exists()) {
+        this.userData = userDoc.data();
+        console.log('👤 UserService: Loaded existing user data');
+        // Ensure all new fields exist (migration)
+        await this.migrateUserData();
+      } else {
+        // New user - create document with all fields
+        console.log('👤 UserService: Creating new user document');
+        await this.createNewUser(firebaseUser);
       }
+      
+      // Update last active and check streak
+      await this.updateLastActive();
+      
+      this.isInitialized = true;
+      this.isInitializing = false;
+      console.log('✅ UserService: Initialization complete');
+      
+    } catch (error) {
+      this.isInitializing = false;
+      console.error('❌ UserService: Initialization failed:', error);
+      throw error;
     }
-
-    // All retries failed
-    this.isInitializing = false;
-    console.error('❌ UserService: Initialization failed after retries:', lastError);
-    // Don't throw - allow app to continue without user tracking
-    // throw lastError;
   }
 
   /**

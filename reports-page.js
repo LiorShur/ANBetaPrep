@@ -14,8 +14,6 @@ import {
 import { reverseGeocodeWithCache, getLocationDisplayName } from './src/helpers/geocoding.js';
 import toast from './src/helpers/toasts.js';
 import modal from './src/helpers/modals.js';
-import { offlineIndicator } from './src/ui/offlineIndicator.js';
-import { showError, getErrorMessage } from './src/utils/errorMessages.js';
 
 // Global state
 let map = null;
@@ -28,9 +26,6 @@ let markerClusterGroup = null;
 // Initialize page
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('📄 Reports page initializing...');
-  
-  // Initialize offline indicator
-  offlineIndicator.initialize();
   
   // Wait for auth to be ready
   await initializeAuth();
@@ -52,11 +47,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Hide loading overlay
   document.getElementById('loadingOverlay').classList.add('hidden');
-  
-  // Make utilities available for debugging
-  window.offlineIndicator = offlineIndicator;
-  window.showError = showError;
-  window.getErrorMessage = getErrorMessage;
   
   console.log('✅ Reports page initialized');
 });

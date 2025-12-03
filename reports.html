@@ -1029,12 +1029,6 @@
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js';
     import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js';
     import { getFirestore, collection, getDocs, getDoc, doc, query, orderBy, limit, where, updateDoc, arrayUnion, arrayRemove, increment, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js';
-    import { offlineIndicator } from './src/ui/offlineIndicator.js';
-    import { loadingStates } from './src/ui/loadingStates.js';
-    import { gamificationUI } from './src/ui/gamificationUI.js';
-    import { accessibilityRating } from './src/features/accessibilityRating.js';
-    import { showError, getErrorMessage } from './src/utils/errorMessages.js';
-    import { userService } from './src/services/userService.js';
 
     // Firebase config - Access Nature Beta
     const firebaseConfig = {
@@ -1092,9 +1086,6 @@
     document.addEventListener('DOMContentLoaded', async () => {
       console.log('📋 Reports page initializing...');
 
-      // Initialize offline indicator
-      offlineIndicator.initialize();
-
       // Initialize map
       initializeMap();
 
@@ -1104,14 +1095,8 @@
         updateAuthUI(user);
         console.log('🔐 Auth state changed:', user ? `Signed in as ${user.email || 'Anonymous'}` : 'Signed out');
         
-        // Initialize userService for gamification tracking
+        // Reload reports when auth state changes
         if (user) {
-          try {
-            await userService.initializeUser(user);
-            console.log('🏅 UserService initialized for gamification');
-          } catch (error) {
-            console.warn('⚠️ UserService initialization failed:', error);
-          }
           await loadReports();
         }
       });
@@ -1132,18 +1117,6 @@
 
       // Hide loading overlay
       document.getElementById('loadingOverlay').classList.add('hidden');
-
-      // Make utilities available for debugging
-      window.offlineIndicator = offlineIndicator;
-      window.loadingStates = loadingStates;
-      window.gamificationUI = gamificationUI;
-      window.accessibilityRating = accessibilityRating;
-      window.userService = userService;
-      window.showError = showError;
-      window.getErrorMessage = getErrorMessage;
-      
-      // Setup badge notification popups
-      gamificationUI.setupBadgeNotifications();
 
       console.log('✅ Reports page initialized');
     });
@@ -2087,15 +2060,6 @@
         
         // Show success message
         showToast('Report submitted successfully!', 'success');
-        
-        // Track report for gamification (awards badges & points)
-        if (userService.isInitialized) {
-          try {
-            await userService.trackReportSubmitted();
-          } catch (trackError) {
-            console.warn('⚠️ Failed to track report for gamification:', trackError);
-          }
-        }
         
         // Reload reports
         await loadReports();
