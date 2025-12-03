@@ -3,7 +3,6 @@ import { auth, db } from '../../firebase-setup.js';
 import { toast } from '../utils/toast.js';
 import { modal } from '../utils/modal.js';
 import { userService } from '../services/userService.js';
-import { trailGuideGeneratorV2 } from './trailGuideGeneratorV2.js';
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -55,10 +54,20 @@ export class AuthController {
 async warmupFirestore() {
   try {
     // Import Firestore functions
-    const { enableNetwork } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
+    const { enableNetwork, enableIndexedDbPersistence } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
     
-    // Note: Persistence is now configured in firebase-setup.js
-    // Do not call enableIndexedDbPersistence here as it conflicts with the new cache settings
+    // Try to enable offline persistence (speeds up subsequent queries)
+    try {
+      await enableIndexedDbPersistence(db);
+      console.log('🔥 Firestore offline persistence enabled');
+    } catch (e) {
+      if (e.code === 'failed-precondition') {
+        console.log('⚠️ Persistence failed: multiple tabs open');
+      } else if (e.code === 'unimplemented') {
+        console.log('⚠️ Persistence not supported in this browser');
+      }
+      // Already enabled is also OK
+    }
     
     // Try to enable network connection explicitly
     try {
@@ -186,10 +195,6 @@ setupCloudButtonsWithRetry() {
       
       if (user) {
         console.log('✅ User signed in:', user.email);
-        
-        // Small delay to let Firestore warmup queries settle
-        // This helps avoid "Target ID already exists" conflicts
-        await new Promise(resolve => setTimeout(resolve, 100));
         
         // Initialize userService for engagement tracking
         try {
@@ -827,7 +832,60 @@ debounce(func, wait) {
 }
 
 
-// Cloud routes loading is handled by loadUserRoutes method below (around line 1026)
+// UPDATED: Enhanced route loading with better feedback
+async loadUserRoutes() {
+  if (!this.currentUser) {
+    this.showAuthError('Please sign in to load your routes');
+    return;
+  }
+
+  try {
+    this.showCloudSyncIndicator('Loading your cloud routes...');
+
+    // Import Firestore functions
+    const { collection, query, where, orderBy, getDocs } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
+    
+    const routesQuery = query(
+      collection(db, 'routes'),
+      where('userId', '==', this.currentUser.uid),
+      orderBy('createdAt', 'desc')
+    );
+
+    const querySnapshot = await getDocs(routesQuery);
+    const routes = [];
+    
+    querySnapshot.forEach(doc => {
+      const data = doc.data();
+      routes.push({
+        id: doc.id,
+        ...data,
+        // Add computed fields for display
+        displayDate: new Date(data.createdAt).toLocaleDateString(),
+        displayTime: new Date(data.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+        locationCount: data.stats?.locationPoints || 0,
+        photoCount: data.stats?.photos || 0,
+        noteCount: data.stats?.notes || 0
+      });
+    });
+
+    if (routes.length === 0) {
+      toast.info('No cloud routes found. Record a route and save it to cloud first.');
+      return;
+    }
+
+    await this.showCloudRoutesList(routes);
+    toast.success(`Found ${routes.length} cloud route${routes.length !== 1 ? 's' : ''}!`);
+    
+  } catch (error) {
+    console.error('❌ Failed to load routes:', error);
+    
+    if (error.code === 'permission-denied') {
+      toast.error('Permission denied. Please check your Firestore security rules.');
+    } else {
+      toast.error('Failed to load routes: ' + error.message);
+    }
+  }
+}
 
 // UPDATED: Better cloud routes display with more info
 async showCloudRoutesList(routes) {
@@ -973,7 +1031,7 @@ async updateUserStats() {
       this.showCloudSyncIndicator(retryCount > 0 ? 'Retrying...' : 'Loading your routes...');
 
       // Import Firestore functions
-      const { collection, query, where, orderBy, getDocs, getDocsFromServer } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
+      const { collection, query, where, orderBy, getDocs } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
       
       const routesQuery = query(
         collection(db, 'routes'),
@@ -981,38 +1039,19 @@ async updateUserStats() {
         orderBy('createdAt', 'desc')
       );
 
-      // Try server first to avoid cache conflicts, with 30 second timeout
-      let querySnapshot;
+      // Add timeout (15 seconds)
+      const queryPromise = getDocs(routesQuery);
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Query timeout')), 30000)
+        setTimeout(() => reject(new Error('Query timeout')), 15000)
       );
       
-      try {
-        // Try getDocsFromServer first to bypass cache issues
-        const serverPromise = getDocsFromServer(routesQuery);
-        querySnapshot = await Promise.race([serverPromise, timeoutPromise]);
-        console.log('📂 Routes loaded from server');
-      } catch (serverError) {
-        // Fallback to cached getDocs
-        console.log('📂 Server fetch failed, trying cache...', serverError.message);
-        const cachePromise = getDocs(routesQuery);
-        querySnapshot = await Promise.race([cachePromise, timeoutPromise]);
-        console.log('📂 Routes loaded from cache');
-      }
-      
+      const querySnapshot = await Promise.race([queryPromise, timeoutPromise]);
       const routes = [];
       
       querySnapshot.forEach(doc => {
-        const data = doc.data();
         routes.push({
           id: doc.id,
-          ...data,
-          // Add computed fields for display
-          displayDate: new Date(data.createdAt).toLocaleDateString(),
-          displayTime: new Date(data.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
-          locationCount: data.stats?.locationPoints || 0,
-          photoCount: data.stats?.photos || 0,
-          noteCount: data.stats?.notes || 0
+          ...doc.data()
         });
       });
 
@@ -1021,7 +1060,7 @@ async updateUserStats() {
         return;
       }
 
-      await this.showCloudRoutesList(routes);
+      await this.showRoutesList(routes);
       toast.success(`Found ${routes.length} cloud routes!`);
       
     } catch (error) {
@@ -1031,16 +1070,12 @@ async updateUserStats() {
       if ((error.message === 'Query timeout' || error.code === 'unavailable') && retryCount < MAX_RETRIES) {
         console.log(`🔄 Retrying... (${retryCount + 1}/${MAX_RETRIES})`);
         toast.warning('Connection slow, retrying...');
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Longer delay between retries
+        await new Promise(resolve => setTimeout(resolve, 1000));
         return this.loadUserRoutes(retryCount + 1);
       }
       
       if (error.message === 'Query timeout') {
         toast.error('Request timed out. Please check your internet connection and try again.');
-      } else if (error.code === 'failed-precondition') {
-        // Missing index error
-        toast.error('Database index required. Please contact support.');
-        console.error('Missing Firestore index for routes query. Create composite index: userId (asc), createdAt (desc)');
       } else {
         toast.error('Failed to load routes: ' + error.message);
       }
@@ -1172,8 +1207,16 @@ async generateAndStoreTrailGuide(routeId, routeData, routeInfo, accessibilityDat
   try {
     console.log('🌐 Generating trail guide HTML for:', routeInfo.name);
     
-    // Use the new trail guide generator V2
-    const htmlContent = trailGuideGeneratorV2.generateHTML(routeData, routeInfo, accessibilityData);
+    // Get the export controller to generate HTML
+    const app = window.AccessNatureApp;
+    const exportController = app?.getController('export');
+    
+    if (!exportController || typeof exportController.generateRouteSummaryHTML !== 'function') {
+      console.warn('Export controller not available for HTML generation');
+      return;
+    }
+    
+    const htmlContent = exportController.generateRouteSummaryHTML(routeData, routeInfo, accessibilityData);
     
     // Create trail guide document
     const trailGuideDoc = {
@@ -1498,7 +1541,7 @@ async updateTrailGuide(originalGuideId, routeData, routeInfo, accessibilityData)
       routeName: routeInfo.name,
       userId: this.currentUser.uid,
       userEmail: this.currentUser.email,
-      htmlContent: trailGuideGeneratorV2.generateHTML(routeData, routeInfo, accessibilityData),
+      htmlContent: this.generateRouteSummaryHTML(routeData, routeInfo, accessibilityData),
       generatedAt: new Date().toISOString(),
       isPublic: false, // New version starts private
       
